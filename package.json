@@ -1,0 +1,26 @@
+{
+  "name": "proyecto-api-institucion_educativa-",
+  "version": "1.0.0",
+  "description": "Proyecto final: servidor web y API REST con Node.js + Express, base de datos MongoDB y pruebas.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/javierfloreshz12-jpg/Proyecto-API-Institucion_Educativa-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/javierfloreshz12-jpg/Proyecto-API-Institucion_Educativa-/issues"
+  },
+  "homepage": "https://github.com/javierfloreshz12-jpg/Proyecto-API-Institucion_Educativa-#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "mongoose": "^9.6.1",
+    "pg": "^8.20.0"
+  }
+}
