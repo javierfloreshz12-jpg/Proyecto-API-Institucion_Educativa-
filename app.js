@@ -95,3 +95,149 @@ app.post('/alumnos/crear', async (req, res) => {
     res.status(500).json({ ok: false, error: 'Error al crear' });
   }
 });
+
+//------------------
+
+// PUT /alumnos/actualizar/:id - Actualizar datos de un alumno
+app.put('/alumnos/actualizar/:id', async (req, res) => {
+  try {
+    const { id } = req.params;  // ID desde la URL
+    const { nombre, apellido, edad, correo } = req.body;  // Datos a actualizar
+    // Validación: El ID debe ser numérico
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
+    // Verificamos que el alumno exista y esté activo antes de actualizar
+    const existe = await pool.query(
+      'SELECT id FROM alumno WHERE id = $1 AND isActive = true', [id]
+    );
+    if (existe.rows.length === 0) 
+      return res.status(404).json({ ok: false, error: 'No encontrado' });
+    // === CONSTRUCCIÓN DINÁMICA DE LA CONSULTA UPDATE ===
+    // Creamos arrays para construir la parte SET de forma segura
+    const campos = [], valores = []; 
+    let i = 1;  // Contador para los parámetros $1, $2, $3...
+    // Solo agregamos al UPDATE los campos que se enviaron en el body
+    // Esto permite actualizaciones parciales (ej: solo cambiar el correo)
+    if (nombre) { campos.push(`nombre=$${i++}`); valores.push(nombre); }
+    if (apellido) { campos.push(`apellido=$${i++}`); valores.push(apellido); }
+    if (edad) { campos.push(`edad=$${i++}`); valores.push(edad); }
+    if (correo) { campos.push(`correo=$${i++}`); valores.push(correo); }
+    // Si no se envió ningún campo para actualizar, retornamos error
+    if (campos.length === 0) 
+      return res.status(400).json({ ok: false, error: 'Envía datos a actualizar' });
+    // Agregamos el ID al final de los valores (para la cláusula WHERE)
+    valores.push(id);
+    // Construimos y ejecutamos la consulta UPDATE dinámica
+    // Ejemplo resultante: UPDATE alumno SET nombre=$1, correo=$2 WHERE id=$3
+    const resultado = await pool.query(
+      `UPDATE alumno SET ${campos.join(',')} WHERE id=$${i} RETURNING *`, 
+      valores
+    );
+    res.json({ ok: true, message: 'Actualizado', data: resultado.rows[0] });
+  } catch (error) {
+    console.error(error);
+    // Manejo de correo duplicado también en actualización
+    if (error.code === '23505') 
+      return res.status(400).json({ ok: false, error: 'Correo duplicado' });
+    res.status(500).json({ ok: false, error: 'Error al actualizar' });
+  }
+});
+
+// DELETE /alumnos/eliminar/:id - Eliminación lógica
+app.delete('/alumnos/eliminar/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Validación de ID numérico
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
+    // Verificamos que el alumno exista antes de "eliminarlo"
+    const existe = await pool.query(
+      'SELECT id,nombre FROM alumno WHERE id=$1 AND isActive=true', [id]
+    );
+    if (existe.rows.length === 0) 
+      return res.status(404).json({ ok: false, error: 'No encontrado' });
+    // === ELIMINACIÓN LÓGICA ===
+    // En lugar de borrar el registro (DELETE), cambiamos isActive a false
+    // Esto mantiene el historial y permite recuperación si es necesario
+    await pool.query('UPDATE alumno SET isActive=false WHERE id=$1', [id]);
+    // Confirmamos la operación con los datos del registro inactivado
+    res.json({ ok: true, message: 'Inactivado', data: { id, isActive: false } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, error: 'Error al eliminar' });
+  }
+});
+
+// MÓDULO: MATERIAS (PostgreSQL) - Operaciones CRUD
+// GET /materias - Listar todas las materias
+app.get('/materias', async (req, res) => {
+  try {
+    // Consulta simple: todas las materias ordenadas por nombre
+    // No filtramos por isActive porque las materias no usan soft delete en este ejemplo
+    const resultado = await pool.query('SELECT * FROM materia ORDER BY nombre');
+    res.json({ ok: true, data: resultado.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, error: 'Error al consultar' });
+  }
+});
+
+// GET /materias/:id - Obtener materia por ID
+app.get('/materias/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (isNaN(id)) return res.status(400).json({ ok: false, error: 'ID inválido' });
+    const resultado = await pool.query('SELECT * FROM materia WHERE id=$1', [id]);
+    if (resultado.rows.length === 0) 
+      return res.status(404).json({ ok: false, error: 'No encontrado' });
+    res.json({ ok: true, data: resultado.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ ok: false, error: 'Error del servidor' });
+  }
+});
+
+// POST /materias/crear - Crear nueva materia con validación de duplicados
+app.post('/materias/crear', async (req, res) => {
+  try {
+    const { nombre, semestre, creditos } = req.body;
+    
+    // Validación básica: el nombre es obligatorio y no puede estar vacío
+    if (!nombre || nombre.trim() === '') {
+      return res.status(400).json({ ok: false, error: 'El nombre es obligatorio' });
+    }
+    
+    // === VALIDACIÓN DE DUPLICADOS AVANZADA ===
+    // Verificamos si ya existe una materia con la misma combinación:
+    // nombre + semestre + créditos
+    // Manejamos valores NULL correctamente con OR (semestre IS NULL AND $2 IS NULL)
+    const existe = await pool.query(
+      `SELECT id FROM materia 
+       WHERE nombre = $1 
+         AND (semestre = $2 OR (semestre IS NULL AND $2 IS NULL))
+         AND (creditos = $3 OR (creditos IS NULL AND $3 IS NULL))`,
+      [nombre.trim(), semestre || null, creditos || null]
+    );
+    
+    // Si encontramos un registro idéntico, rechazamos la creación
+    if (existe.rows.length > 0) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Ya existe una materia con este nombre, semestre y créditos' 
+      });
+    }
+    // Insertamos la nueva materia
+    // Usamos || null para convertir valores vacíos/undefined a NULL en la BD
+    const resultado = await pool.query(
+      `INSERT INTO materia (nombre, semestre, creditos) 
+       VALUES ($1, $2, $3) RETURNING *`,
+      [nombre.trim(), semestre || null, creditos || null]
+    );
+    res.status(201).json({ 
+      ok: true, 
+      message: 'Materia creada correctamente', 
+      data: resultado.rows[0] 
+    });
+  } catch (error) {
+    console.error('Error al crear materia:', error);
+    res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+  }
+});
