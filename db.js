@@ -1,4 +1,4 @@
-// db.js - Conexión a PostgreSQL: proyecto_final_db
+// Conexión a PostgreSQL: proyecto_final_db
 const { Pool } = require('pg');
 
 const pool = new Pool({

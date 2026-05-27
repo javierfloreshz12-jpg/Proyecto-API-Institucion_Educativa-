@@ -1,0 +1,15 @@
+$kind: http-request
+url: http://localhost:3000/materias/crear
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"nombre\": \"filosofia\",\r
+
+    \  \"semestre\": \"1\",\r
+
+    \  \"creditos\": 1\r
+
+    }"
+order: 1779330924155

@@ -1,0 +1,8 @@
+$kind: http-request
+name: asignar materias a alumnos
+url: http://localhost:3000/alumnos/4/materias
+method: POST
+body:
+  type: json
+  content: '{"materia_id": 1}'
+order: 592075576588372
