@@ -241,3 +241,69 @@ app.post('/materias/crear', async (req, res) => {
     res.status(500).json({ ok: false, error: 'Error interno del servidor' });
   }
 });
+
+//-------------------
+
+// MÓDULO: RELACIÓN ALUMNO - MATERIAS
+// Esta sección maneja la tabla intermedia 'alumno_materia' que conecta
+// alumnos con materias. Es una relación muchos-a-muchos.
+// POST /alumnos/:id/materias - Asignar una materia a un alumno
+app.post('/alumnos/:id/materias', async (req, res) => {
+  try {
+    // Extraemos IDs: alumno_id de la URL, materia_id del body JSON
+    const { id: alumno_id } = req.params;
+    const { materia_id } = req.body;
+    // Validaciones básicas de presencia y tipo de datos
+    if (!materia_id) {
+      return res.status(400).json({ ok: false, error: 'El materia_id es obligatorio' });
+    }
+    if (isNaN(alumno_id) || isNaN(materia_id)) {
+      return res.status(400).json({ ok: false, error: 'Los IDs deben ser números válidos' });
+    }
+    //  VERIFICACIÓN DE EXISTENCIA
+    // 1. Verificar que el alumno exista y esté activo
+    const alumno = await pool.query(
+      'SELECT id, nombre FROM alumno WHERE id = $1 AND isActive = true',
+      [alumno_id]
+    );
+    if (alumno.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Alumno no encontrado o inactivo' });
+    }
+    // 2. Verificar que la materia exista
+    const materia = await pool.query(
+      'SELECT id, nombre FROM materia WHERE id = $1',
+      [materia_id]
+    );
+    if (materia.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Materia no encontrada' });
+    }
+    // 3. Verificar que la asignación no exista ya (evitar duplicados)
+    const existe = await pool.query(
+      'SELECT id FROM alumno_materia WHERE alumno_id = $1 AND materia_id = $2',
+      [alumno_id, materia_id]
+    );
+    if (existe.rows.length > 0) {
+      return res.status(400).json({ ok: false, error: 'Esta materia ya está asignada al alumno' });
+    }
+    // INSERCIÓN DE LA RELACIÓN
+    // Insertamos en la tabla intermedia alumno_materia
+    const resultado = await pool.query(
+      `INSERT INTO alumno_materia (alumno_id, materia_id) 
+       VALUES ($1, $2) RETURNING *`,
+      [alumno_id, materia_id]
+    );
+    // Respuesta enriquecida: incluimos nombres legibles junto con los IDs
+    res.status(201).json({
+      ok: true,
+      message: 'Materia asignada correctamente',
+      data: { 
+        ...resultado.rows[0],  // Datos de la tabla intermedia (id, fechas, etc.)
+        alumno_nombre: alumno.rows[0].nombre,    // Nombre del alumno
+        materia_nombre: materia.rows[0].nombre   // Nombre de la materia
+      }
+    });
+  } catch (error) {
+    console.error('Error al asignar materia:', error);
+    res.status(500).json({ ok: false, error: 'Error interno del servidor' });
+  }
+});
